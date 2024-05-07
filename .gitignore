@@ -35,3 +35,7 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# Custom ignore settings for specific project directories and configuration files
+src/main/java/com/study/board/util/
+src/main/resources/application.properties

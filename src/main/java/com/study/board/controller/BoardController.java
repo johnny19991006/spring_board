@@ -24,7 +24,7 @@ public class BoardController {
     @Autowired
     private BoardService boardService;
 
-    @GetMapping("/board/write") //localhost:8090/board/write
+    @GetMapping("/board/write")
     public String boardWriteForm() {
 
         return "boardwrite";
@@ -66,7 +66,7 @@ public class BoardController {
         return "boardlist";
     }
 
-    @GetMapping("/board/view") // localhost:8080/board/view?id=1
+    @GetMapping("/board/view")
     public String boardView(Model model, Integer id) {
 
         model.addAttribute("board", boardService.boardView(id));
