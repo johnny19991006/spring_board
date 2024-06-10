@@ -2,10 +2,17 @@ package com.study.board.controller;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import javax.annotation.PostConstruct;
+
+import com.study.board.dto.SentimentResponse;
 import com.study.board.model.Body;
 import com.study.board.model.IndexData;
 import com.study.board.repository.CompanyRepository;
@@ -22,6 +29,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import org.springframework.data.redis.core.ReactiveRedisTemplate;
+import org.springframework.data.redis.core.ReactiveValueOperations;
+
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.util.function.Tuple2;
@@ -36,10 +46,19 @@ public class KisController {
     @Autowired
     private AccessTokenManager accessTokenManager;
 
+    @Autowired
+    private ReactiveRedisTemplate<String, Object> reactiveRedisTemplate;
+
     private final WebClient webClient;
     private String path;
     private String tr_id;
     private final CompanyRepository companyRepository;
+    private ReactiveValueOperations<String, Object> reactiveValueOps;
+
+    @PostConstruct
+    public void init() {
+        reactiveValueOps = reactiveRedisTemplate.opsForValue();
+    }
 
     public KisController(WebClient.Builder webClientBuilder, CompanyRepository companyRepository) {
         this.webClient = webClientBuilder.baseUrl(KisConfig.REST_BASE_URL).build();
@@ -86,7 +105,7 @@ public class KisController {
     }
 
     public String getJobDateTime() {
-        LocalDateTime now = LocalDateTime.now();
+        ZonedDateTime now = ZonedDateTime.now(ZoneId.of("Asia/Seoul"));
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         return now.format(formatter);
     }
@@ -120,13 +139,249 @@ public class KisController {
 
     }
 
+    /*@GetMapping("/equities")
+    public Mono<String> getCurrentPrice(@RequestParam("stockName") String stockName, Model model) {
+        return Mono.justOrEmpty(companyRepository.findByName(stockName))
+            .flatMap(company -> {
+                String kisUrl = "/uapi/domestic-stock/v1/quotations/inquire-price?fid_cond_mrkt_div_code=J&fid_input_iscd=" + company.getCode();
+                String sentimentUrl = "http://13.124.38.18:5000/" + company.getCode();
+
+                // KisConfig 요청
+                Mono<Body> kisResponse = webClient.get()
+                    .uri(kisUrl)
+                    .header("content-type", "application/json")
+                    .header("authorization", "Bearer " + accessTokenManager.getAccessToken())
+                    .header("appkey", KisConfig.APPKEY)
+                    .header("appsecret", KisConfig.APPSECRET)
+                    .header("tr_id", "FHKST01010100")
+                    .retrieve()
+                    .bodyToMono(Body.class);
+
+                // Flask 감정 분석 요청
+                Mono<String> sentimentResponse = webClient.get()
+                    .uri(sentimentUrl)
+                    .retrieve()
+                    .bodyToMono(String.class);
+
+                return Mono.zip(kisResponse, sentimentResponse)
+                    .map(tuple -> {
+                        Body kisBody = tuple.getT1();
+                        String sentimentBody = tuple.getT2();
+
+                        ObjectMapper objectMapper = new ObjectMapper();
+                        try {
+                            SentimentResponse sentimentResponseObj = objectMapper.readValue(sentimentBody, SentimentResponse.class);
+                            SentimentResponse.SentimentCount sentimentCount = sentimentResponseObj.getSentiment_count();
+
+                            model.addAttribute("equity", kisBody.getOutput());
+                            model.addAttribute("stockName", stockName);
+                            model.addAttribute("jobDate", getJobDateTime());
+                            model.addAttribute("sentimentTotalSentiment", sentimentResponseObj.getTotal_sentiment());
+                            model.addAttribute("sentimentTotalScore", sentimentResponseObj.getTotal_score());
+                            model.addAttribute("sentimentNegative", sentimentCount.getNegative());
+                            model.addAttribute("sentimentNeutral", sentimentCount.getNeutral());
+                            model.addAttribute("sentimentPositive", sentimentCount.getPositive());
+
+                        } catch (Exception e) {
+                            model.addAttribute("error", "Error parsing sentiment data: " + e.getMessage());
+                        }
+
+                        return "equities";
+                    })
+                    .doOnError(result -> {
+                        model.addAttribute("error", "Error occurred while processing request: " + result.getMessage());
+                        System.out.println("*** error: " + result);
+                    })
+                    .defaultIfEmpty("equities");
+            })
+            .switchIfEmpty(Mono.defer(() -> {
+                model.addAttribute("error", "No company found with the name: " + stockName);
+                return Mono.just("equities");
+            }));
+    }*/
+    /*@GetMapping("/equities")
+    public Mono<String> getCurrentPrice(@RequestParam("stockName") String stockName, Model model) {
+        return reactiveValueOps.get(stockName)
+            .flatMap(cachedData -> {
+                if (cachedData instanceof Map) {
+                    Map<String, Object> data = (Map<String, Object>) cachedData;
+                    model.addAttribute("equity", data.get("equity"));
+                    model.addAttribute("stockName", data.get("stockName"));
+                    model.addAttribute("jobDate", data.get("jobDate"));
+                    model.addAttribute("sentimentTotalSentiment", data.get("sentimentTotalSentiment"));
+                    model.addAttribute("sentimentTotalScore", data.get("sentimentTotalScore"));
+                    model.addAttribute("sentimentNegative", data.get("sentimentNegative"));
+                    model.addAttribute("sentimentNeutral", data.get("sentimentNeutral"));
+                    model.addAttribute("sentimentPositive", data.get("sentimentPositive"));
+                    return Mono.just("equities");
+                } else {
+                    model.addAttribute("error", "Unexpected data type in cache");
+                    return Mono.just("equities");
+                }
+            })
+            .switchIfEmpty(Mono.defer(() -> {
+                return Mono.justOrEmpty(companyRepository.findByName(stockName))
+                    .flatMap(company -> {
+                        String kisUrl = "/uapi/domestic-stock/v1/quotations/inquire-price?fid_cond_mrkt_div_code=J&fid_input_iscd=" + company.getCode();
+                        String sentimentUrl = "http://13.124.38.18:5000/" + company.getCode();
+
+                        Mono<Body> kisResponse = webClient.get()
+                            .uri(kisUrl)
+                            .header("content-type", "application/json")
+                            .header("authorization", "Bearer " + accessTokenManager.getAccessToken())
+                            .header("appkey", KisConfig.APPKEY)
+                            .header("appsecret", KisConfig.APPSECRET)
+                            .header("tr_id", "FHKST01010100")
+                            .retrieve()
+                            .bodyToMono(Body.class);
+
+                        Mono<String> sentimentResponse = webClient.get()
+                            .uri(sentimentUrl)
+                            .retrieve()
+                            .bodyToMono(String.class);
+
+                        return Mono.zip(kisResponse, sentimentResponse)
+                            .flatMap(tuple -> {
+                                Body kisBody = tuple.getT1();
+                                String sentimentBody = tuple.getT2();
+
+                                ObjectMapper objectMapper = new ObjectMapper();
+                                try {
+                                    SentimentResponse sentimentResponseObj = objectMapper.readValue(sentimentBody, SentimentResponse.class);
+                                    SentimentResponse.SentimentCount sentimentCount = sentimentResponseObj.getSentiment_count();
+
+                                    Map<String, Object> cacheData = new HashMap<>();
+                                    cacheData.put("equity", kisBody.getOutput());
+                                    cacheData.put("stockName", stockName);
+                                    cacheData.put("jobDate", getJobDateTime());
+                                    cacheData.put("sentimentTotalSentiment", sentimentResponseObj.getTotal_sentiment());
+                                    cacheData.put("sentimentTotalScore", sentimentResponseObj.getTotal_score());
+                                    cacheData.put("sentimentNegative", sentimentCount.getNegative());
+                                    cacheData.put("sentimentNeutral", sentimentCount.getNeutral());
+                                    cacheData.put("sentimentPositive", sentimentCount.getPositive());
+
+                                    reactiveValueOps.set(stockName, cacheData).subscribe();
+
+                                    model.addAttribute("equity", kisBody.getOutput());
+                                    model.addAttribute("stockName", stockName);
+                                    model.addAttribute("jobDate", getJobDateTime());
+                                    model.addAttribute("sentimentTotalSentiment", sentimentResponseObj.getTotal_sentiment());
+                                    model.addAttribute("sentimentTotalScore", sentimentResponseObj.getTotal_score());
+                                    model.addAttribute("sentimentNegative", sentimentCount.getNegative());
+                                    model.addAttribute("sentimentNeutral", sentimentCount.getNeutral());
+                                    model.addAttribute("sentimentPositive", sentimentCount.getPositive());
+
+                                } catch (Exception e) {
+                                    model.addAttribute("error", "Error parsing sentiment data: " + e.getMessage());
+                                }
+
+                                return Mono.just("equities");
+                            })
+                            .doOnError(result -> {
+                                model.addAttribute("error", "Error occurred while processing request: " + result.getMessage());
+                                System.out.println("*** error: " + result);
+                            })
+                            .defaultIfEmpty("equities");
+                    });
+            }))
+            .switchIfEmpty(Mono.defer(() -> {
+                model.addAttribute("error", "No company found with the name: " + stockName);
+                return Mono.just("equities");
+            }));
+    }*/
     @GetMapping("/equities")
-    public Mono<String> CurrentPrice(@RequestParam("stockName") String stockName, Model model) {
-        return companyRepository.findByName(stockName)
-            .map(company -> {
-                String url = KisConfig.REST_BASE_URL + "/uapi/domestic-stock/v1/quotations/inquire-price?fid_cond_mrkt_div_code=J&fid_input_iscd=" + company.getCode();
+    public Mono<String> getCurrentPrice(@RequestParam("stockName") String stockName, Model model) {
+        // Retrieve cached data except for equity
+        return reactiveValueOps.get(stockName)
+            .flatMap(cachedData -> {
+                if (cachedData instanceof Map) {
+                    Map<String, Object> data = (Map<String, Object>) cachedData;
+                    model.addAttribute("stockName", data.get("stockName"));
+                    model.addAttribute("jobDate", data.get("jobDate"));
+                    model.addAttribute("sentimentTotalSentiment", data.get("sentimentTotalSentiment"));
+                    model.addAttribute("sentimentTotalScore", data.get("sentimentTotalScore"));
+                    model.addAttribute("sentimentNegative", data.get("sentimentNegative"));
+                    model.addAttribute("sentimentNeutral", data.get("sentimentNeutral"));
+                    model.addAttribute("sentimentPositive", data.get("sentimentPositive"));
+                    model.addAttribute("keywords", data.get("keywords") != null ? data.get("keywords") : new SentimentResponse.Keywords());
+
+                    // Retrieve equity data separately without caching
+                    return retrieveEquityData(stockName, model);
+                } else {
+                    model.addAttribute("error", "Unexpected data type in cache");
+                    return Mono.just("equities");
+                }
+            })
+            .switchIfEmpty(Mono.defer(() -> {
+                return Mono.justOrEmpty(companyRepository.findByName(stockName))
+                    .flatMap(company -> {
+                        String kisUrl = "/uapi/domestic-stock/v1/quotations/inquire-price?fid_cond_mrkt_div_code=J&fid_input_iscd=" + company.getCode();
+                        String sentimentUrl = "http://13.124.38.18:5000/" + company.getCode();
+
+                        Mono<String> sentimentResponse = webClient.get()
+                            .uri(sentimentUrl)
+                            .retrieve()
+                            .bodyToMono(String.class);
+
+                        return sentimentResponse
+                            .flatMap(sentimentBody -> {
+                                ObjectMapper objectMapper = new ObjectMapper();
+                                try {
+                                    SentimentResponse sentimentResponseObj = objectMapper.readValue(sentimentBody, SentimentResponse.class);
+                                    SentimentResponse.SentimentCount sentimentCount = sentimentResponseObj.getSentiment_count();
+                                    SentimentResponse.Keywords keywords = sentimentResponseObj.getKeywords();
+
+                                    // Cache data except for equity
+                                    Map<String, Object> cacheData = new HashMap<>();
+                                    cacheData.put("stockName", stockName);
+                                    cacheData.put("jobDate", getJobDateTime());
+                                    cacheData.put("sentimentTotalSentiment", sentimentResponseObj.getTotal_sentiment());
+                                    cacheData.put("sentimentTotalScore", sentimentResponseObj.getTotal_score());
+                                    cacheData.put("sentimentNegative", sentimentCount.getNegative());
+                                    cacheData.put("sentimentNeutral", sentimentCount.getNeutral());
+                                    cacheData.put("sentimentPositive", sentimentCount.getPositive());
+                                    cacheData.put("keywords", keywords);
+
+                                    reactiveValueOps.set(stockName, cacheData).subscribe();
+
+                                    model.addAttribute("stockName", stockName);
+                                    model.addAttribute("jobDate", getJobDateTime());
+                                    model.addAttribute("sentimentTotalSentiment", sentimentResponseObj.getTotal_sentiment());
+                                    model.addAttribute("sentimentTotalScore", sentimentResponseObj.getTotal_score());
+                                    model.addAttribute("sentimentNegative", sentimentCount.getNegative());
+                                    model.addAttribute("sentimentNeutral", sentimentCount.getNeutral());
+                                    model.addAttribute("sentimentPositive", sentimentCount.getPositive());
+                                    model.addAttribute("keywords", keywords);
+
+                                    // Retrieve equity data separately without caching
+                                    return retrieveEquityData(stockName, model);
+
+                                } catch (Exception e) {
+                                    model.addAttribute("error", "Error parsing sentiment data: " + e.getMessage());
+                                    return Mono.just("equities");
+                                }
+                            })
+                            .doOnError(result -> {
+                                model.addAttribute("error", "Error occurred while processing request: " + result.getMessage());
+                                System.out.println("*** error: " + result);
+                            })
+                            .defaultIfEmpty("equities");
+                    })
+                    .switchIfEmpty(Mono.defer(() -> {
+                        model.addAttribute("error", "No company found with the name: " + stockName);
+                        return Mono.just("equities");
+                    }));
+            }));
+    }
+
+    // Separate method to retrieve equity data
+    private Mono<String> retrieveEquityData(String stockName, Model model) {
+        return Mono.justOrEmpty(companyRepository.findByName(stockName))
+            .flatMap(company -> {
+                String kisUrl = "/uapi/domestic-stock/v1/quotations/inquire-price?fid_cond_mrkt_div_code=J&fid_input_iscd=" + company.getCode();
+
                 return webClient.get()
-                    .uri(url)
+                    .uri(kisUrl)
                     .header("content-type", "application/json")
                     .header("authorization", "Bearer " + accessTokenManager.getAccessToken())
                     .header("appkey", KisConfig.APPKEY)
@@ -134,18 +389,15 @@ public class KisController {
                     .header("tr_id", "FHKST01010100")
                     .retrieve()
                     .bodyToMono(Body.class)
-                    .doOnSuccess(body -> {
-                        model.addAttribute("equity", body.getOutput());
-                        model.addAttribute("stockName", stockName);
-                        model.addAttribute("jobDate", getJobDateTime());
-                    })
-                    .doOnError(result -> System.out.println("*** error: " + result))
-                    .thenReturn("equities");
+                    .map(kisBody -> {
+                        model.addAttribute("equity", kisBody.getOutput());
+                        return "equities";
+                    });
             })
-            .orElseGet(() -> {
+            .switchIfEmpty(Mono.defer(() -> {
                 model.addAttribute("error", "No company found with the name: " + stockName);
                 return Mono.just("equities");
-            });
+            }));
     }
 
 }
