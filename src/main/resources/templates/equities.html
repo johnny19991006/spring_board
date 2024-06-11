@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/wordcloud2.js" defer></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-cloud/1.2.5/d3.layout.cloud.min.js"></script>
     <title>오늘의 주가</title>
     <style>
         body {
@@ -31,18 +32,17 @@
             margin-top: 20px;
             margin-bottom: 10px;
         }
-        .keyword-list {
-            columns: 2;
-            -webkit-columns: 2;
-            -moz-columns: 2;
-        }
-        .alert {
-            margin-top: 20px;
-        }
-        #negativeWordCloud, #neutralWordCloud, #positiveWordCloud, #newsWordCloud, #totalWordCloud {
+        .wordcloud {
             width: 100%;
-            height: 400px;
-            position: relative;
+            height: 500px;
+        }
+        .word {
+            font-family: Impact;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
         }
     </style>
 </head>
@@ -102,42 +102,44 @@
                          th:text="${sentimentTotalScore} + '/100 points'">0/100 points</div>
                 </div>
 
-                <div class="text-center mt-4">
-                    <h5>네이버토론방</h5>
-                    <div th:if="${sentimentPositive != null}">
-                        <p>긍정 의견: <span th:text="${sentimentPositive.comments != null ? sentimentPositive.comments : 0}">0</span></p>
+                <div class="text-center mt-4 d-flex justify-content-around">
+                    <div>
+                        <h5>네이버토론방</h5>
+                        <div th:if="${sentimentPositive != null}">
+                            <p>긍정 의견: <span th:text="${sentimentPositive.comments != null ? sentimentPositive.comments : 0}">0</span></p>
+                        </div>
+                        <div th:if="${sentimentNeutral != null}">
+                            <p>중립 의견: <span th:text="${sentimentNeutral.comments != null ? sentimentNeutral.comments : 0}">0</span></p>
+                        </div>
+                        <div th:if="${sentimentNegative != null}">
+                            <p>부정 의견: <span th:text="${sentimentNegative.comments != null ? sentimentNegative.comments : 0}">0</span></p>
+                        </div>
                     </div>
-                    <div th:if="${sentimentNeutral != null}">
-                        <p>중립 의견: <span th:text="${sentimentNeutral.comments != null ? sentimentNeutral.comments : 0}">0</span></p>
-                    </div>
-                    <div th:if="${sentimentNegative != null}">
-                        <p>부정 의견: <span th:text="${sentimentNegative.comments != null ? sentimentNegative.comments : 0}">0</span></p>
-                    </div>
-                </div>
 
-                <div class="text-center mt-4">
-                    <h5>Investing</h5>
-                    <div th:if="${sentimentPositive != null}">
-                        <p>긍정 투자 의견: <span th:text="${sentimentPositive.investing != null ? sentimentPositive.investing : 0}">0</span></p>
+                    <div>
+                        <h5>Investing</h5>
+                        <div th:if="${sentimentPositive != null}">
+                            <p>긍정 투자 의견: <span th:text="${sentimentPositive.investing != null ? sentimentPositive.investing : 0}">0</span></p>
+                        </div>
+                        <div th:if="${sentimentNeutral != null}">
+                            <p>중립 투자 의견: <span th:text="${sentimentNeutral.investing != null ? sentimentNeutral.investing : 0}">0</span></p>
+                        </div>
+                        <div th:if="${sentimentNegative != null}">
+                            <p>부정 투자 의견: <span th:text="${sentimentNegative.investing != null ? sentimentNegative.investing : 0}">0</span></p>
+                        </div>
                     </div>
-                    <div th:if="${sentimentNeutral != null}">
-                        <p>중립 투자 의견: <span th:text="${sentimentNeutral.investing != null ? sentimentNeutral.investing : 0}">0</span></p>
-                    </div>
-                    <div th:if="${sentimentNegative != null}">
-                        <p>부정 투자 의견: <span th:text="${sentimentNegative.investing != null ? sentimentNegative.investing : 0}">0</span></p>
-                    </div>
-                </div>
 
-                <div class="text-center mt-4">
-                    <h5>뉴스</h5>
-                    <div th:if="${sentimentPositive != null}">
-                        <p>긍정 뉴스: <span th:text="${sentimentPositive.news != null ? sentimentPositive.news : 0}">0</span></p>
-                    </div>
-                    <div th:if="${sentimentNeutral != null}">
-                        <p>중립 뉴스: <span th:text="${sentimentNeutral.news != null ? sentimentNeutral.news : 0}">0</span></p>
-                    </div>
-                    <div th:if="${sentimentNegative != null}">
-                        <p>부정 뉴스: <span th:text="${sentimentNegative.news != null ? sentimentNegative.news : 0}">0</span></p>
+                    <div>
+                        <h5>뉴스</h5>
+                        <div th:if="${sentimentPositive != null}">
+                            <p>긍정 뉴스: <span th:text="${sentimentPositive.news != null ? sentimentPositive.news : 0}">0</span></p>
+                        </div>
+                        <div th:if="${sentimentNeutral != null}">
+                            <p>중립 뉴스: <span th:text="${sentimentNeutral.news != null ? sentimentNeutral.news : 0}">0</span></p>
+                        </div>
+                        <div th:if="${sentimentNegative != null}">
+                            <p>부정 뉴스: <span th:text="${sentimentNegative.news != null ? sentimentNegative.news : 0}">0</span></p>
+                        </div>
                     </div>
                 </div>
 
@@ -148,65 +150,85 @@
     <div th:if="${equity != null}" class="card">
         <div class="card-body">
             <h4 class="text-center">키워드 분석</h4>
-            <div class="row">
-                <div class="col-md-4" th:if="${keywords != null and keywords.negative != null}">
-                    <h5 class="text-danger">부정</h5>
-                    <div id="negativeWordCloud"></div>
-                </div>
-                <div class="col-md-4" th:if="${keywords != null and keywords.neutral != null}">
-                    <h5 class="text-secondary">중립</h5>
-                    <div id="neutralWordCloud"></div>
-                </div>
-                <div class="col-md-4" th:if="${keywords != null and keywords.positive != null}">
-                    <h5 class="text-success">긍정</h5>
-                    <div id="positiveWordCloud"></div>
-                </div>
-            </div>
-            <div class="mt-4" th:if="${keywords != null and keywords.news != null}">
-                <h5 class="text-primary">뉴스 키워드</h5>
-                <div id="newsWordCloud"></div>
-            </div>
-            <div class="mt-4" th:if="${keywords != null and keywords.total != null}">
-                <h5 class="text-primary">전체 키워드</h5>
-                <div id="totalWordCloud"></div>
-            </div>
+            <div id="wordcloud" class="wordcloud"></div>
         </div>
+    </div>
+
+    <div class="text-center mt-3 legend">
+        <p>긍정 키워드: <span style="color:green;">초록</span></p>
+        <p>부정 키워드: <span style="color:red;">빨강</span></p>
+        <p>중립 키워드: <span style="color:gray;">회색</span></p>
+        <p>뉴스 키워드: <span style="color:black;">검정</span></p>
     </div>
 </div>
 
-<script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const keywords = /*[[${keywords}]]*/ {};
+<script th:inline="javascript">
+    /*<![CDATA[*/
+    var keywords = /*[[${keywords}]]*/ {};
+    var totalKeywords = new Set(keywords.total);
 
-        const createWordCloud = (elementId, keywordList, color) => {
-            const list = keywordList.map(keyword => [keyword, Math.random() * 100]);
-            WordCloud(document.getElementById(elementId), {
-                list: list,
-                color: color,
-                backgroundColor: '#f8f9fa',
+    function generateWordCloud(keywords) {
+        var combinedKeywords = [];
+        var keywordCounts = {};
+
+        function addKeywords(keywordList, category) {
+            keywordList.forEach(function(word) {
+                if (keywordCounts[word]) {
+                    keywordCounts[word].count++;
+                    keywordCounts[word].categories.push(category);
+                } else {
+                    keywordCounts[word] = { count: 1, categories: [category] };
+                }
             });
-        };
-
-        if (keywords.negative) {
-            createWordCloud('negativeWordCloud', keywords.negative, '#dc3545');
         }
 
-        if (keywords.neutral) {
-            createWordCloud('neutralWordCloud', keywords.neutral, '#6c757d');
-        }
+        addKeywords(keywords.positive, "positive");
+        addKeywords(keywords.negative, "negative");
+        addKeywords(keywords.neutral, "neutral");
+        addKeywords(keywords.news, "news");
 
-        if (keywords.positive) {
-            createWordCloud('positiveWordCloud', keywords.positive, '#28a745');
-        }
+        Object.keys(keywordCounts).forEach(function(word) {
+            var size = 20 + (keywordCounts[word].count - 1) * 10;
+            if (totalKeywords.has(word)) {
+                size += 10;
+            }
+            var color = keywordCounts[word].categories.includes("positive") ? "green" :
+                keywordCounts[word].categories.includes("negative") ? "red" :
+                    keywordCounts[word].categories.includes("neutral") ? "gray" : "black";
+            combinedKeywords.push({ text: word, size: size, color: color });
+        });
 
-        if (keywords.news) {
-            createWordCloud('newsWordCloud', keywords.news, '#007bff');
-        }
+        d3.layout.cloud().size([500, 500])
+            .words(combinedKeywords)
+            .padding(5)
+            .rotate(0)
+            .font("Impact")
+            .fontSize(function(d) { return d.size; })
+            .on("end", function(words) {
+                d3.select("#wordcloud").append("svg")
+                    .attr("width", 500)
+                    .attr("height", 500)
+                    .append("g")
+                    .attr("transform", "translate(250,250)")
+                    .selectAll("text")
+                    .data(words)
+                    .enter().append("text")
+                    .style("font-size", function(d) { return d.size + "px"; })
+                    .style("font-family", "Impact")
+                    .style("fill", function(d) { return d.color; })
+                    .attr("text-anchor", "middle")
+                    .attr("transform", function(d) {
+                        return "translate(" + [d.x, d.y] + ")rotate(" + d.rotate + ")";
+                    })
+                    .text(function(d) { return d.text; });
+            })
+            .start();
+    }
 
-        if (keywords.total) {
-            createWordCloud('totalWordCloud', keywords.total, '#17a2b8');
-        }
+    document.addEventListener('DOMContentLoaded', function() {
+        generateWordCloud(keywords);
     });
+    /*]]>*/
 </script>
 </body>
 </html>
